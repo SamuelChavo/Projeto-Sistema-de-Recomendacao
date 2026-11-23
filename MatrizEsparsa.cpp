@@ -1,6 +1,7 @@
 #include "MatrizEsparsa.h"
 #include <algorithm>
 #include <climits>
+#include <iomanip>
 #include <iostream>
 
 using namespace std;
@@ -162,4 +163,34 @@ vector<double> distanciasDaLinha(
     }
 
     return distancias;
+}
+
+size_t memoriaCSR(const MatrizCSR &matriz) {
+    return matriz.values.size() * sizeof(uint16_t)
+         + matriz.col_index.size() * sizeof(uint16_t)
+         + matriz.row_ptr.size() * sizeof(int);
+}
+
+void exibirComparacaoMemoria(const MatrizCSR &compras) {
+    size_t posicoes = (size_t)compras.linhas * compras.colunas;
+    size_t densa = posicoes * sizeof(unsigned char);
+    size_t csr = memoriaCSR(compras);
+    double MB = 1024.0 * 1024.0;
+
+    cout << fixed << setprecision(2)
+         << "\n--- A5: Memoria da matriz de compras ---\n"
+         << "Dimensoes: " << compras.linhas << " x " << compras.colunas
+         << " = " << posicoes << " posicoes\n"
+         << "Compras registradas (nao nulos): " << compras.values.size() << "\n\n"
+         << "Densa (unsigned char, 1 byte por posicao): " << densa << " bytes = " << densa / MB << " MB\n"
+         << "CSR:\n"
+         << "  values    (uint16_t): " << compras.values.size() * sizeof(uint16_t) << " bytes\n"
+         << "  col_index (uint16_t): " << compras.col_index.size() * sizeof(uint16_t) << " bytes\n"
+         << "  row_ptr   (int):      " << compras.row_ptr.size() * sizeof(int) << " bytes\n"
+         << "  total:                " << csr << " bytes = " << csr / MB << " MB\n\n"
+         << "A CSR usa " << (double)densa / csr << " vezes menos memoria ("
+         << 100.0 * (1.0 - (double)csr / densa) << "% de economia)\n";
+
+    cout.unsetf(ios::fixed);
+    cout << setprecision(6);
 }

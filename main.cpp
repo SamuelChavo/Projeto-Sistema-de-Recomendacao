@@ -20,6 +20,8 @@ int main() {
 
     MatrizCSR compras = converterComprasParaCSR(dados);
 
+    exibirComparacaoMemoria(compras);
+
     cout << "\nConstruindo matriz de intersecoes CSR em disco...\n";
 
     if (!multiplicarCSRParaDisco(compras, "intersecoes")) {
@@ -28,29 +30,42 @@ int main() {
     }
 
     LeitorCSRDisco leitor;
-    int indiceCliente = 0;
-    vector<uint16_t> colunas, valores;
 
-    if (!leitor.abrir("intersecoes") || !leitor.lerLinha(indiceCliente, colunas, valores)) {
-        cout << "Erro ao ler a matriz gravada.\n";
+    if (!leitor.abrir("intersecoes")) {
+        cout << "Erro ao abrir a matriz gravada.\n";
         return 1;
     }
 
-    DadosSimilaridade sim;
-    sim.similaridades = distanciasDaLinha(compras, indiceCliente, colunas, valores);
+    cout << "\n--- A3: Recomendacoes para tres clientes ---\n";
 
-    cout << "\nCliente: " << dados.clientes[indiceCliente] << "\n";
+    int clientesDemo[3] = {0, 1000, 2000};
 
-    int similar = clienteMaisSimilar(sim, indiceCliente);
+    for (int indiceCliente : clientesDemo) {
+        vector<uint16_t> colunas, valores;
 
-    if (similar >= 0) {
-        cout << "Cliente mais similar: " << dados.clientes[similar] << "\n";
-    }
+        if (!leitor.lerLinha(indiceCliente, colunas, valores)) {
+            cout << "Erro ao ler a linha do cliente " << indiceCliente << ".\n";
+            continue;
+        }
 
-    cout << "Produtos recomendados:\n";
+        DadosSimilaridade sim;
+        sim.similaridades = distanciasDaLinha(compras, indiceCliente, colunas, valores);
 
-    for (const auto &p : recomendarProdutos(dados, sim, indiceCliente, 5)) {
-        cout << "- " << dados.produtos[p.indiceProduto] << " (ranking: " << p.ranking << ")\n";
+        cout << "\nCliente: " << dados.clientes[indiceCliente] << "\n";
+
+        int similar = clienteMaisSimilar(sim, indiceCliente);
+
+        if (similar >= 0) {
+            cout << "Cliente mais similar: " << dados.clientes[similar] << "\n";
+        } else {
+            cout << "Nenhum cliente similar encontrado.\n";
+        }
+
+        cout << "Produtos recomendados:\n";
+
+        for (const auto &p : recomendarProdutos(dados, sim, indiceCliente, 5)) {
+            cout << "- " << dados.produtos[p.indiceProduto] << " (ranking: " << p.ranking << ")\n";
+        }
     }
 
     cout << "\nProcessamento concluido!\n";

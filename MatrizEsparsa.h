@@ -37,4 +37,8 @@ vector<double> distanciasDaLinha(
     const vector<uint16_t> &valores
 );
 
+size_t memoriaCSR(const MatrizCSR &matriz);
+
+void exibirComparacaoMemoria(const MatrizCSR &compras);
+
 #endif
