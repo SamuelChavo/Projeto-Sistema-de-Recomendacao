@@ -3,13 +3,11 @@
 #include "Recomendacao.h"
 #include "MatrizEsparsa.h"
 #include <iostream>
-#include <iomanip>
 
 using namespace std;
 
 int main() {
     ListaCompras dados;
-    DadosSimilaridade sim;
 
     if (!carregarPasta(dados, "dados")) {
         cout << "Erro ao carregar os arquivos CSV.\n";
@@ -20,55 +18,42 @@ int main() {
          << "Total de clientes: " << dados.clientes.size() << "\n"
          << "Total de produtos: " << dados.produtos.size() << "\n";
 
-    cout << "\nConstruindo matriz de compras CSR...\n";
-
     MatrizCSR compras = converterComprasParaCSR(dados);
-    MatrizCSR linhaTeste = multiplicarLinhaCSR(compras, 0);
 
-    exibirComparacaoMemoria(compras, linhaTeste);
+    cout << "\nConstruindo matriz de intersecoes CSR em disco...\n";
 
-    const string clientesTeste[] = {
-        "99CL9Y01",
-        "9O6OSM01",
-        "99EF7201"
-    };
-
-    const int k = 5;
-
-    for (const string &codigo : clientesTeste) {
-        int indice = buscarCliente(dados, codigo);
-
-        if (indice == -1) {
-            cout << "\nCliente " << codigo << " nao encontrado.\n";
-            continue;
-        }
-
-        cout << "\nCalculando intersecoes CSR...\n";
-
-        MatrizCSR intersecoes = multiplicarLinhaCSR(compras, indice);
-
-        sim.similaridades = calcularDistanciasCSR(
-            compras, intersecoes, indice
-        );
-
-        int vizinho = clienteMaisSimilar(sim, indice);
-
-        cout << "\n----------------------------------\n"
-             << "Cliente: " << codigo << "\n";
-
-        if (vizinho != -1) {
-            cout << "Cliente mais similar: "
-                 << dados.clientes[vizinho] << "\n";
-        }
-
-        cout << "Produtos recomendados:\n";
-
-        for (const auto &produto : recomendarProdutos(dados, sim, indice, k)) {
-            cout << "- " << dados.produtos[produto.indiceProduto]
-                 << " (ranking: " << fixed << setprecision(10)
-                 << produto.ranking << ")\n";
-        }
+    if (!multiplicarCSRParaDisco(compras, "intersecoes")) {
+        cout << "Falha na construcao da matriz CSR.\n";
+        return 1;
     }
+
+    LeitorCSRDisco leitor;
+    int indiceCliente = 0;
+    vector<uint16_t> colunas, valores;
+
+    if (!leitor.abrir("intersecoes") || !leitor.lerLinha(indiceCliente, colunas, valores)) {
+        cout << "Erro ao ler a matriz gravada.\n";
+        return 1;
+    }
+
+    DadosSimilaridade sim;
+    sim.similaridades = distanciasDaLinha(compras, indiceCliente, colunas, valores);
+
+    cout << "\nCliente: " << dados.clientes[indiceCliente] << "\n";
+
+    int similar = clienteMaisSimilar(sim, indiceCliente);
+
+    if (similar >= 0) {
+        cout << "Cliente mais similar: " << dados.clientes[similar] << "\n";
+    }
+
+    cout << "Produtos recomendados:\n";
+
+    for (const auto &p : recomendarProdutos(dados, sim, indiceCliente, 5)) {
+        cout << "- " << dados.produtos[p.indiceProduto] << " (ranking: " << p.ranking << ")\n";
+    }
+
+    cout << "\nProcessamento concluido!\n";
 
     return 0;
 }

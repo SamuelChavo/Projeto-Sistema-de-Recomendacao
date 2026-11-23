@@ -1,42 +1,44 @@
 #include "MatrizEsparsa.h"
 #include <algorithm>
+#include <climits>
 #include <iostream>
-#include <iomanip>
+
+using namespace std;
 
 MatrizCSR converterComprasParaCSR(const ListaCompras &dados) {
-    MatrizCSR csr;
-    csr.linhas = dados.clientes.size();
-    csr.colunas = dados.produtos.size();
-    csr.row_ptr.push_back(0);
+    MatrizCSR matriz;
+    matriz.linhas = dados.clientes.size();
+    matriz.colunas = dados.produtos.size();
+    matriz.row_ptr.assign(matriz.linhas + 1, 0);
 
-    for (const auto &compra : dados.compras) {
-        vector<int> produtos(compra.begin(), compra.end());
-
+    for (int i = 0; i < matriz.linhas; i++) {
+        vector<int> produtos(dados.compras[i].begin(), dados.compras[i].end());
         sort(produtos.begin(), produtos.end());
-        produtos.erase(unique(produtos.begin(), produtos.end()), produtos.end());
 
         for (int produto : produtos) {
-            if (produto >= 0 && produto < csr.colunas) {
-                csr.values.push_back(1);
-                csr.col_index.push_back(produto);
-            }
+            matriz.col_index.push_back(produto);
+            matriz.values.push_back(1);
         }
 
-        csr.row_ptr.push_back(csr.values.size());
+        matriz.row_ptr[i + 1] = matriz.col_index.size();
     }
 
-    return csr;
+    return matriz;
 }
 
-MatrizCSR multiplicarLinhaCSR(const MatrizCSR &matriz, int linha) {
-    MatrizCSR resultado;
-    resultado.linhas = 1;
-    resultado.colunas = matriz.linhas;
-    resultado.row_ptr.push_back(0);
+bool multiplicarCSRParaDisco(const MatrizCSR &matriz, const string &prefixoArquivo) {
+    if (matriz.linhas > 65536) {
+        cout << "Clientes demais para col_index uint16_t.\n";
+        return false;
+    }
 
-    if (linha < 0 || linha >= matriz.linhas) {
-        resultado.row_ptr.push_back(0);
-        return resultado;
+    ofstream arquivoValues(prefixoArquivo + "_values.bin", ios::binary);
+    ofstream arquivoColunas(prefixoArquivo + "_col_index.bin", ios::binary);
+    ofstream arquivoLinhas(prefixoArquivo + "_row_ptr.bin", ios::binary);
+
+    if (!arquivoValues || !arquivoColunas || !arquivoLinhas) {
+        cout << "Erro ao criar os arquivos CSR.\n";
+        return false;
     }
 
     vector<vector<int>> clientesPorProduto(matriz.colunas);
@@ -49,99 +51,115 @@ MatrizCSR multiplicarLinhaCSR(const MatrizCSR &matriz, int linha) {
 
     vector<int> contagem(matriz.linhas, 0);
     vector<int> tocados;
+    vector<uint16_t> valoresLinha, colunasLinha;
+    vector<int> row_ptr(matriz.linhas + 1, 0);
+    long long total = 0;
 
-    for (int p = matriz.row_ptr[linha]; p < matriz.row_ptr[linha + 1]; p++) {
-        int produto = matriz.col_index[p];
+    for (int i = 0; i < matriz.linhas; i++) {
+        tocados.clear();
 
-        for (int cliente : clientesPorProduto[produto]) {
-            if (contagem[cliente] == 0) {
-                tocados.push_back(cliente);
+        for (int p = matriz.row_ptr[i]; p < matriz.row_ptr[i + 1]; p++) {
+            for (int cliente : clientesPorProduto[matriz.col_index[p]]) {
+                if (contagem[cliente]++ == 0) {
+                    tocados.push_back(cliente);
+                }
             }
+        }
 
-            contagem[cliente]++;
+        sort(tocados.begin(), tocados.end());
+        valoresLinha.clear();
+        colunasLinha.clear();
+
+        for (int cliente : tocados) {
+            valoresLinha.push_back(contagem[cliente]);
+            colunasLinha.push_back(cliente);
+            contagem[cliente] = 0;
+        }
+
+        streamsize bytes = valoresLinha.size() * sizeof(uint16_t);
+        arquivoValues.write(reinterpret_cast<const char *>(valoresLinha.data()), bytes);
+        arquivoColunas.write(reinterpret_cast<const char *>(colunasLinha.data()), bytes);
+
+        total += tocados.size();
+
+        if (total > INT_MAX || !arquivoValues || !arquivoColunas) {
+            cout << "Erro ao gravar a matriz na linha " << i << ".\n";
+            return false;
+        }
+
+        row_ptr[i + 1] = total;
+
+        if (i % 5000 == 0) {
+            cout << "Linhas processadas: " << i << " / " << matriz.linhas
+                 << " | Elementos gravados: " << total << "\n";
         }
     }
 
-    sort(tocados.begin(), tocados.end());
+    arquivoLinhas.write(reinterpret_cast<const char *>(row_ptr.data()), row_ptr.size() * sizeof(int));
 
-    for (int cliente : tocados) {
-        resultado.values.push_back(contagem[cliente]);
-        resultado.col_index.push_back(cliente);
-    }
+    cout << "\nMatriz CSR gravada em disco com sucesso!\n";
+    cout << "Elementos nao nulos: " << total << "\n";
 
-    resultado.row_ptr.push_back(resultado.values.size());
-
-    return resultado;
+    return static_cast<bool>(arquivoLinhas);
 }
 
-vector<double> calcularDistanciasCSR(
-    const MatrizCSR &compras,
-    const MatrizCSR &intersecoes,
-    int indiceCliente
-) {
-    vector<double> distancias(compras.linhas, 1.0);
+bool LeitorCSRDisco::abrir(const string &prefixoArquivo) {
+    arquivoValues.open(prefixoArquivo + "_values.bin", ios::binary);
+    arquivoColunas.open(prefixoArquivo + "_col_index.bin", ios::binary);
+    ifstream arquivoLinhas(prefixoArquivo + "_row_ptr.bin", ios::binary | ios::ate);
 
-    if (indiceCliente < 0 || indiceCliente >= compras.linhas ||
-        intersecoes.linhas != 1) {
-        return distancias;
+    if (!arquivoValues || !arquivoColunas || !arquivoLinhas) {
+        return false;
     }
 
-    int totalCompras =
-        compras.row_ptr[indiceCliente + 1] -
-        compras.row_ptr[indiceCliente];
+    streamoff bytes = arquivoLinhas.tellg();
+    row_ptr.resize(bytes / sizeof(int));
+    arquivoLinhas.seekg(0);
+    arquivoLinhas.read(reinterpret_cast<char *>(row_ptr.data()), bytes);
+
+    return row_ptr.size() > 1 && arquivoLinhas;
+}
+
+bool LeitorCSRDisco::lerLinha(int linha, vector<uint16_t> &colunas, vector<uint16_t> &valores) {
+    if (linha < 0 || linha + 1 >= (int)row_ptr.size()) {
+        return false;
+    }
+
+    int quantidade = row_ptr[linha + 1] - row_ptr[linha];
+    streamoff inicio = (streamoff)row_ptr[linha] * sizeof(uint16_t);
+    streamsize bytes = quantidade * sizeof(uint16_t);
+
+    colunas.resize(quantidade);
+    valores.resize(quantidade);
+
+    arquivoColunas.clear();
+    arquivoValues.clear();
+    arquivoColunas.seekg(inicio);
+    arquivoValues.seekg(inicio);
+    arquivoColunas.read(reinterpret_cast<char *>(colunas.data()), bytes);
+    arquivoValues.read(reinterpret_cast<char *>(valores.data()), bytes);
+
+    return arquivoColunas && arquivoValues;
+}
+
+vector<double> distanciasDaLinha(
+    const MatrizCSR &compras,
+    int indiceCliente,
+    const vector<uint16_t> &colunas,
+    const vector<uint16_t> &valores
+) {
+    vector<double> distancias(compras.linhas, 1.0);
+    int totalCompras = compras.row_ptr[indiceCliente + 1] - compras.row_ptr[indiceCliente];
 
     if (totalCompras == 0) {
         return distancias;
     }
 
-    for (int p = intersecoes.row_ptr[0];
-         p < intersecoes.row_ptr[1]; p++) {
-
-        int cliente = intersecoes.col_index[p];
-
-        if (cliente != indiceCliente) {
-            distancias[cliente] =
-                1.0 - (double)intersecoes.values[p] / totalCompras;
+    for (size_t k = 0; k < colunas.size(); k++) {
+        if (colunas[k] != indiceCliente) {
+            distancias[colunas[k]] = 1.0 - (double)valores[k] / totalCompras;
         }
     }
 
     return distancias;
-}
-
-size_t memoriaCSR(const MatrizCSR &csr) {
-    return csr.values.size() * sizeof(int)
-         + csr.col_index.size() * sizeof(int)
-         + csr.row_ptr.size() * sizeof(int);
-}
-
-size_t memoriaDensa(int linhas, int colunas, size_t tamanhoElemento) {
-    return (size_t)linhas * colunas * tamanhoElemento;
-}
-
-void exibirComparacaoMemoria(
-    const MatrizCSR &compras,
-    const MatrizCSR &intersecoes
-) {
-    size_t densa = memoriaDensa(
-        compras.linhas,
-        compras.colunas,
-        sizeof(unsigned char)
-    );
-
-    size_t esparsa = memoriaCSR(compras);
-
-    cout << fixed << setprecision(2)
-         << "\n--- Uso de memoria ---\n"
-         << "Compras - densa: " << densa / 1048576.0
-         << " MB | CSR: " << esparsa / 1048576.0 << " MB\n"
-         << "Uma linha de intersecoes CSR: "
-         << memoriaCSR(intersecoes) / 1024.0 << " KB\n"
-         << "Elementos nao nulos na linha: "
-         << intersecoes.values.size() << "\n";
-
-    if (densa > 0) {
-        cout << "Reducao nas compras: "
-             << 100.0 * (1.0 - (double)esparsa / densa)
-             << "%\n";
-    }
 }

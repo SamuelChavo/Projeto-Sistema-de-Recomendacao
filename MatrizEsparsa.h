@@ -2,7 +2,9 @@
 #define MATRIZ_ESPARSA_H
 
 #include <vector>
-#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <fstream>
 #include "Lista_de_compras.h"
 
 using namespace std;
@@ -10,28 +12,29 @@ using namespace std;
 struct MatrizCSR {
     int linhas;
     int colunas;
-    vector<int> values;
-    vector<int> col_index;
+    vector<uint16_t> values;
+    vector<uint16_t> col_index;
     vector<int> row_ptr;
+};
+
+struct LeitorCSRDisco {
+    ifstream arquivoValues;
+    ifstream arquivoColunas;
+    vector<int> row_ptr;
+
+    bool abrir(const string &prefixoArquivo);
+    bool lerLinha(int linha, vector<uint16_t> &colunas, vector<uint16_t> &valores);
 };
 
 MatrizCSR converterComprasParaCSR(const ListaCompras &dados);
 
-MatrizCSR multiplicarLinhaCSR(const MatrizCSR &matriz, int linha);
+bool multiplicarCSRParaDisco(const MatrizCSR &matriz, const string &prefixoArquivo);
 
-vector<double> calcularDistanciasCSR(
+vector<double> distanciasDaLinha(
     const MatrizCSR &compras,
-    const MatrizCSR &intersecoes,
-    int indiceCliente
-);
-
-size_t memoriaCSR(const MatrizCSR &matriz);
-
-size_t memoriaDensa(int linhas, int colunas, size_t tamanhoElemento);
-
-void exibirComparacaoMemoria(
-    const MatrizCSR &compras,
-    const MatrizCSR &intersecoes
+    int indiceCliente,
+    const vector<uint16_t> &colunas,
+    const vector<uint16_t> &valores
 );
 
 #endif

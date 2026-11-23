@@ -1,5 +1,6 @@
 #include "Recomendacao.h"
 #include <algorithm>
+#include <cmath>
 
 using namespace std;
 
@@ -12,50 +13,51 @@ vector<ProdutoRecomendado> recomendarProdutos(
     vector<ProdutoRecomendado> recomendacoes;
 
     if (indiceCliente < 0 ||
-        indiceCliente >= dados.clientes.size() ||
-        indiceCliente >= sim.similaridades.size() ||
+        indiceCliente >= (int)dados.clientes.size() ||
+        indiceCliente >= (int)sim.similaridades.size() ||
         k <= 0) {
         return recomendacoes;
     }
 
-    vector<double> ranking(dados.produtos.size(), 1.0);
+    vector<double> logRanking(dados.produtos.size(), 0.0);
+    vector<bool> tocado(dados.produtos.size(), false);
     vector<bool> jaComprou(dados.produtos.size(), false);
 
     for (int produto : dados.compras[indiceCliente]) {
         jaComprou[produto] = true;
     }
 
-    for (int i = 0; i < dados.clientes.size(); i++) {
+    for (int i = 0; i < (int)dados.clientes.size(); i++) {
         if (i == indiceCliente || sim.similaridades[i] >= 1.0) {
             continue;
         }
 
+        double logDistancia = log(sim.similaridades[i]);
+
         for (int produto : dados.compras[i]) {
             if (!jaComprou[produto]) {
-                ranking[produto] *= sim.similaridades[i];
+                logRanking[produto] += logDistancia;
+                tocado[produto] = true;
             }
         }
     }
 
-    for (int i = 0; i < ranking.size(); i++) {
-        if (!jaComprou[i] && ranking[i] < 1.0) {
-            ProdutoRecomendado produto;
-            produto.indiceProduto = i;
-            produto.ranking = ranking[i];
-            recomendacoes.push_back(produto);
+    vector<pair<double, int>> ordem;
+
+    for (int i = 0; i < (int)logRanking.size(); i++) {
+        if (!jaComprou[i] && tocado[i]) {
+            ordem.push_back({logRanking[i], i});
         }
     }
 
-    sort(
-        recomendacoes.begin(),
-        recomendacoes.end(),
-        [](const ProdutoRecomendado &a, const ProdutoRecomendado &b) {
-            return a.ranking < b.ranking;
-        }
-    );
+    sort(ordem.begin(), ordem.end());
 
-    if (recomendacoes.size() > k) {
-        recomendacoes.resize(k);
+    if ((int)ordem.size() > k) {
+        ordem.resize(k);
+    }
+
+    for (const auto &item : ordem) {
+        recomendacoes.push_back({item.second, exp(item.first)});
     }
 
     return recomendacoes;
