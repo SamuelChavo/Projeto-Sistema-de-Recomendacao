@@ -1,9 +1,7 @@
-
 #include "Lista_de_compras.h"
 #include "Similaridade.h"
 #include "Recomendacao.h"
 #include "MatrizEsparsa.h"
-
 #include <iostream>
 #include <iomanip>
 
@@ -18,71 +16,57 @@ int main() {
         return 1;
     }
 
-    cout << "Base carregada com sucesso!\n";
-    cout << "Total de clientes: " << dados.clientes.size() << "\n";
-    cout << "Total de produtos: " << dados.produtos.size() << "\n";
+    cout << "Base carregada com sucesso!\n"
+         << "Total de clientes: " << dados.clientes.size() << "\n"
+         << "Total de produtos: " << dados.produtos.size() << "\n";
 
-    construirMatrizCompras(dados, sim);
+    cout << "\nConstruindo matriz de compras CSR...\n";
 
-    calcularMatrizIntersecao(sim, true);
+    MatrizCSR compras = converterComprasParaCSR(dados);
+    MatrizCSR linhaTeste = multiplicarLinhaCSR(compras, 0);
 
-    MatrizCSR comprasCSR =
-        converterParaCSR(sim.matrizCompras);
+    exibirComparacaoMemoria(compras, linhaTeste);
 
-    MatrizCSR intersecoesCSR =
-        multiplicarCSR(comprasCSR);
-
-    string clientesTeste[] = {
+    const string clientesTeste[] = {
         "99CL9Y01",
         "9O6OSM01",
         "99EF7201"
     };
 
-    int k = 5;
+    const int k = 5;
 
-    for (string codigo : clientesTeste) {
+    for (const string &codigo : clientesTeste) {
         int indice = buscarCliente(dados, codigo);
 
         if (indice == -1) {
-            cout << "\nCliente " << codigo
-                 << " nao encontrado.\n";
+            cout << "\nCliente " << codigo << " nao encontrado.\n";
             continue;
         }
 
+        cout << "\nCalculando intersecoes CSR...\n";
+
+        MatrizCSR intersecoes = multiplicarLinhaCSR(compras, indice);
+
         sim.similaridades = calcularDistanciasCSR(
-            comprasCSR,
-            intersecoesCSR,
-            indice
+            compras, intersecoes, indice
         );
 
         int vizinho = clienteMaisSimilar(sim, indice);
 
-        cout << "\n----------------------------------\n";
-        cout << "Cliente: " << codigo << "\n";
+        cout << "\n----------------------------------\n"
+             << "Cliente: " << codigo << "\n";
 
         if (vizinho != -1) {
             cout << "Cliente mais similar: "
                  << dados.clientes[vizinho] << "\n";
-        } else {
-            cout << "Nenhum cliente similar encontrado.\n";
         }
-
-        vector<ProdutoRecomendado> recomendacoes =
-            recomendarProdutos(dados, sim, indice, k);
 
         cout << "Produtos recomendados:\n";
 
-        if (recomendacoes.empty()) {
-            cout << "Nenhuma recomendacao encontrada.\n";
-        }
-
-        for (const ProdutoRecomendado &produto : recomendacoes) {
-            cout << "- "
-                 << dados.produtos[produto.indiceProduto]
-                 << " (ranking: "
-                 << fixed << setprecision(10)
-                 << produto.ranking
-                 << ")\n";
+        for (const auto &produto : recomendarProdutos(dados, sim, indice, k)) {
+            cout << "- " << dados.produtos[produto.indiceProduto]
+                 << " (ranking: " << fixed << setprecision(10)
+                 << produto.ranking << ")\n";
         }
     }
 

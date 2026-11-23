@@ -1,4 +1,3 @@
-
 #include "Lista_de_compras.h"
 #include <fstream>
 #include <sstream>

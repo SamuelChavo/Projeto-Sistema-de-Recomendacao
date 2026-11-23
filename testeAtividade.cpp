@@ -1,55 +1,54 @@
-
-#include "../Similaridade.h"
+#include "Similaridade.h"
 #include <iostream>
 #include <chrono>
+#include <vector>
 
 using namespace std;
 using namespace chrono;
 
 int main() {
-    vector<vector<unsigned char>> matriz = {
-        {1, 1, 0, 0, 1},
-        {1, 0, 1, 0, 1},
-        {0, 1, 1, 1, 0},
-        {1, 1, 0, 1, 0}
-    };
+    const vector<int> tamanhos = {40, 80, 120, 160};
+    const int produtos = 100;
 
-    auto inicioPadrao = high_resolution_clock::now();
+    cout << "Comparacao da multiplicacao padrao e otimizada (A4)\n";
+    cout << "Clientes | Padrao (ms) | Otimizado (ms) | Resultados iguais\n";
 
-    auto padrao = multiplicarPadrao(matriz);
+    for (int n : tamanhos) {
+        vector<vector<unsigned char>> matriz(
+            n, vector<unsigned char>(produtos, 0)
+        );
 
-    auto fimPadrao = high_resolution_clock::now();
-
-    auto inicioOtimizado = high_resolution_clock::now();
-
-    auto otimizado = multiplicarOtimizado(matriz);
-
-    auto fimOtimizado = high_resolution_clock::now();
-
-    bool iguais = padrao == otimizado;
-
-    cout << "Matrizes iguais: "
-         << (iguais ? "SIM" : "NAO") << "\n";
-
-    cout << "Tempo padrao: "
-         << duration<double, milli>(
-                fimPadrao - inicioPadrao
-            ).count()
-         << " ms\n";
-
-    cout << "Tempo otimizado: "
-         << duration<double, milli>(
-                fimOtimizado - inicioOtimizado
-            ).count()
-         << " ms\n";
-
-    for (const auto &linha : padrao) {
-        for (int valor : linha) {
-            cout << valor << " ";
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < produtos; j++) {
+                matriz[i][j] = ((i * 17 + j * 13) % 11 < 2) ? 1 : 0;
+            }
         }
 
-        cout << "\n";
+        auto inicioPadrao = steady_clock::now();
+        auto padrao = multiplicarPadrao(matriz);
+        auto fimPadrao = steady_clock::now();
+
+        auto inicioOtimizado = steady_clock::now();
+        auto otimizado = multiplicarOtimizado(matriz);
+        auto fimOtimizado = steady_clock::now();
+
+        bool iguais = padrao == otimizado;
+
+        double tempoPadrao =
+            duration<double, milli>(fimPadrao - inicioPadrao).count();
+
+        double tempoOtimizado =
+            duration<double, milli>(fimOtimizado - inicioOtimizado).count();
+
+        cout << n << " x " << produtos << " | "
+             << tempoPadrao << " | "
+             << tempoOtimizado << " | "
+             << (iguais ? "SIM" : "NAO") << "\n";
+
+        if (!iguais) {
+            return 1;
+        }
     }
 
-    return iguais ? 0 : 1;
+    return 0;
 }
